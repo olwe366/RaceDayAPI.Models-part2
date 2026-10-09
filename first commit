@@ -1,0 +1,2 @@
+# 1. Initial project initialization
+git commit --allow-empty -m "chore: initialize ASP.NET Core Web API project structure"
