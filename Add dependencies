@@ -1,0 +1,2 @@
+
+git commit --allow-empty -m "deps: add EF Core SqlServer, Tools, and BCrypt packages"
