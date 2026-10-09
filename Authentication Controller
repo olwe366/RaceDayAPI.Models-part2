@@ -1,0 +1,81 @@
+git commit --allow-empty -m "feat(api): implement AuthController with user registration and password hashing"
+git commit --allow-empty -m "feat(api): add login and logout session endpoints to AuthController"
+
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using RaceDayAPI.Data;
+using RaceDayAPI.Models;
+
+namespace RaceDayAPI.Controllers
+{
+    [ApiController]
+    [Route("api/auth")]
+    public class AuthController : ControllerBase
+    {
+        private readonly RaceDayDbContext _context;
+
+        public AuthController(RaceDayDbContext context)
+        {
+            _context = context;
+        }
+
+        public record RegisterDto(string FullName, string Email, string Password, string? PhoneNumber, string Role);
+        public record LoginDto(string Email, string Password);
+
+        /// <summary>
+        /// Registers a new user as Organiser or Participant.
+        /// </summary>
+        [HttpPost("register")]
+        public async Task<IActionResult> Register([FromBody] RegisterDto dto)
+        {
+            if (await _context.Users.AnyAsync(u => u.Email == dto.Email))
+                return Conflict(new { message = "Email is already registered." });
+
+            var role = await _context.Roles.FirstOrDefaultAsync(r => r.RoleName.ToLower() == dto.Role.ToLower());
+            if (role == null)
+                return BadRequest(new { message = "Invalid role. Must be 'Organiser' or 'Participant'." });
+
+            var user = new User
+            {
+                FullName = dto.FullName,
+                Email = dto.Email,
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password), // Password Hashing
+                PhoneNumber = dto.PhoneNumber,
+                RoleID = role.RoleID
+            };
+
+            _context.Users.Add(user);
+            await _context.SaveChangesAsync();
+
+            return CreatedAtAction(nameof(Register), new { userId = user.UserID, fullName = user.FullName, email = user.Email, role = role.RoleName });
+        }
+
+        /// <summary>
+        /// Authenticates user and sets session.
+        /// </summary>
+        [HttpPost("login")]
+        public async Task<IActionResult> Login([FromBody] LoginDto dto)
+        {
+            var user = await _context.Users.Include(u => u.Role).FirstOrDefaultAsync(u => u.Email == dto.Email);
+            if (user == null || !BCrypt.Net.BCrypt.Verify(dto.Password, user.PasswordHash))
+                return Unauthorized(new { message = "Invalid credentials." });
+
+            // Store session variables
+            HttpContext.Session.SetInt32("UserID", user.UserID);
+            HttpContext.Session.SetString("UserRole", user.Role!.RoleName);
+
+            return Ok(new { userId = user.UserID, role = user.Role.RoleName, message = "Login successful." });
+        }
+
+        /// <summary>
+        /// Logs out the user by clearing the session.
+        /// </summary>
+        [HttpPost("logout")]
+        public IActionResult Logout()
+        {
+            HttpContext.Session.Clear();
+            return Ok(new { message = "Logged out successfully." });
+        }
+    }
+}
+
