@@ -1,0 +1,36 @@
+git commit --allow-empty -m "feat(auth): configure distributed memory cache and session middleware"
+git commit --allow-empty -m "feat(auth): create SessionAuthorizeAttribute for role-based access control"
+
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Filters;
+
+namespace RaceDayAPI.Attributes
+{
+    [AttributeUsage(AttributeTargets.Class | AttributeTargets.Method)]
+    public class SessionAuthorizeAttribute : Attribute, IAuthorizationFilter
+    {
+        private readonly string[] _roles;
+
+        public SessionAuthorizeAttribute(params string[] roles)
+        {
+            _roles = roles;
+        }
+
+        public void OnAuthorization(AuthorizationFilterContext context)
+        {
+            var userId = context.HttpContext.Session.GetInt32("UserID");
+            var userRole = context.HttpContext.Session.GetString("UserRole");
+
+            if (!userId.HasValue || string.IsNullOrEmpty(userRole))
+            {
+                context.Result = new UnauthorizedObjectResult(new { message = "Authentication required." });
+                return;
+            }
+
+            if (_roles.Length > 0 && !_roles.Contains(userRole, StringComparer.OrdinalIgnoreCase))
+            {
+                context.Result = new ObjectResult(new { message = "Access denied for this role." }) { StatusCode = 403 };
+            }
+        }
+    }
+}
